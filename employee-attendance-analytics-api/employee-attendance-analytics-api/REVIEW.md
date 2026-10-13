@@ -1,0 +1,15 @@
+# Starter-code review
+
+| # | Where | Defect | How to notice | Fix |
+|---|---|---|---|---|
+| 1 | `compute_late_minutes` | It replaces the timestamp's hour without correctly handling IST, attendance date, or overnight shifts. It also needs strict >10-minute grace semantics. | Test 09:40:00, 09:40:01 and a 22:00–06:00 shift. | Convert instants to IST, calculate against the record's shift-start date, and floor elapsed minutes only after the grace threshold is crossed. |
+| 2 | `compute_overtime` | It constructs a naive datetime and does not move shift end to the next day for overnight shifts. | Punch out at 06:40 for a 22:00–06:00 shift. | Use the attendance date and employee shift to construct a timezone-aware shift-end instant. |
+| 3 | `GET /health` | It always returns 200 without checking MongoDB. | Stop MongoDB and call `/health`. | Ping MongoDB and return 503 on connection failure. |
+| 4 | `POST /employees` | Duplicate detection is check-then-insert only, so concurrent requests can create duplicates; shift equality and field constraints are missing. | Send concurrent requests with the same code, or equal shift times. | Validate request fields and enforce uniqueness with a MongoDB unique index; map duplicate-key errors to 409. |
+| 5 | `GET /employees` | `skip=page * page_size` skips page 1, and `total` ignores the department filter. Results are not sorted. | Request page 1 and filter by department. | Use `(page - 1) * page_size`, count the filtered query, sort by `emp_code`, and validate page limits. |
+| 6 | `POST /attendance/punch-in` | Unknown employees cause a server error; timestamps are interpreted as seconds/local time instead of epoch milliseconds; the attendance date ignores IST/overnight rules. | Use an unknown employee, a millisecond timestamp, and an overnight shift. | Validate employee existence and epoch-ms values, truncate to seconds, derive the IST attendance day, and rely on a unique `(emp_code, date)` index for race safety. |
+| 7 | Punch-in model / status | The starter accepts statuses outside the three permitted punch-in statuses and does not validate timestamp shape/range. | Submit `ABSENT`, a string timestamp, or seconds. | Use typed request models and reject invalid values with 422. |
+| 8 | `GET /attendance` | It fetches the whole matching collection, sorts in Python, has no date validation, and omits `_id` conversion/consistent response shape. | Seed many records or send an inverted date range. | Count and paginate in MongoDB, use indexed sort/filter fields, validate dates, and serialize times as epoch milliseconds. |
+| 9 | Entire application | Required punch-out, regularization, analytics, explain endpoint, and indexes are missing. | Compare routes against `openapi.yaml`. | Implement the contract, aggregation-based analytics, startup indexes, optimistic concurrency for corrections, and explain output. |
+
+**Reviewed and retained:** employee identity uses `emp_code` rather than MongoDB `_id`; `date` and `joined_on` remain calendar-date strings; derived attendance fields are stored and analytics read those stored values, as required by the data model.
